@@ -3,6 +3,8 @@
 #include <ctype.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/select.h> // Pre select() a fd_set
+#include <fcntl.h>      // Pre fcntl()
 
 /**
  * @brief Extrahuje hodnotu reťazca z jednoduchého JSON objektu.
@@ -263,33 +265,48 @@ void start_server() {
  */
 void handle_connection(int client_socket, SSL *ssl) {
     char buffer[BUFFER_SIZE] = {0};
-    int bytes_read_total = 0;
-    int bytes_read_last = 0;
+    int bytes_read = 0;
+    int total_bytes_read = 0;
 
-    // Čítanie požiadavky v cykle, aby sme sa uistili, že máme celú požiadavku.
-    // Toto je zjednodušená implementácia, ktorá predpokladá, že požiadavka sa načíta rýchlo.
-    do {
-        // Ak by sme prekročili veľkosť buffera, prestaneme čítať.
-        if (bytes_read_total >= BUFFER_SIZE - 1) {
-            break;
-        }
-        
-        bytes_read_last = SSL_read(ssl, buffer + bytes_read_total, BUFFER_SIZE - 1 - bytes_read_total);
-        
-        if (bytes_read_last > 0) {
-            bytes_read_total += bytes_read_last;
-        }
-        // Jednoduchá heuristika: Ak sme načítali menej, ako sme mohli,
-        // predpokladáme, že je to koniec dát. Pre robustnejšie riešenie
-        // by bolo potrebné parsovať Content-Length hlavičku.
-    } while (bytes_read_last > 0 && SSL_pending(ssl) > 0);
+    // Nastavenie neblokujúceho režimu pre socket
+    int flags = fcntl(client_socket, F_GETFL, 0);
+    fcntl(client_socket, F_SETFL, flags | O_NONBLOCK);
 
+    // Čítanie s časovým limitom, aby sme počkali na prichádzajúce dáta
+    fd_set readfds;
+    struct timeval tv;
+    int retval;
+
+    // Čakáme maximálne 1 sekundu na dáta
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    FD_ZERO(&readfds);
+    FD_SET(client_socket, &readfds);
+
+    retval = select(client_socket + 1, &readfds, NULL, NULL, &tv);
+
+    if (retval == -1) {
+        perror("select()");
+    } else if (retval) {
+        // Dáta sú k dispozícii, čítame ich v cykle
+        do {
+            bytes_read = SSL_read(ssl, buffer + total_bytes_read, BUFFER_SIZE - 1 - total_bytes_read);
+            if (bytes_read > 0) {
+                total_bytes_read += bytes_read;
+            }
+        } while (bytes_read > 0 && SSL_pending(ssl) > 0 && total_bytes_read < BUFFER_SIZE - 1);
+    }
+    // Ak po časovom limite neprišli žiadne dáta, total_bytes_read bude 0
 
     // Diagnostický výpis prijatej požiadavky na konzolu
-    printf("--- Prijatá požiadavka (%d bytes) ---\n%s\n--------------------------\n", bytes_read_total, buffer);
+    printf("--- Prijatá požiadavka (%d bytes) ---\n%s\n--------------------------\n", total_bytes_read, buffer);
     
-    // Všetku logiku spracovania presunieme do funkcie handle_request
-    handle_request(client_socket, buffer, ssl);
+    // Ak sme nič neprečítali, nemá zmysel pokračovať
+    if (total_bytes_read > 0) {
+        // Všetku logiku spracovania presunieme do funkcie handle_request
+        handle_request(client_socket, buffer, ssl);
+    }
 
     // Bezpečné ukončenie SSL spojenia
     SSL_shutdown(ssl);
