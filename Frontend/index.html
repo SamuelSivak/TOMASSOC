@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generátor hesiel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Main container for the application -->
+    <div class="container">
+        <h1>Generátor a správa hesiel</h1>
+        
+        <!-- Sekcia pre generovanie nového hesla -->
+        <div class="card">
+            <h2>Generovať nové heslo</h2>
+
+            <!-- Nastavenia pre generovanie hesla -->
+            <div class="input-group">
+                <label for="passwordLength">Dĺžka hesla:</label>
+                <input type="number" id="passwordLength" min="8" max="32" value="12">
+            </div>
+            
+            <!-- Character Type Checkboxes -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="includeUppercase" checked>
+                <label for="includeUppercase">Veľké písmená (A-Z)</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="includeLowercase" checked>
+                <label for="includeLowercase">Malé písmená (a-z)</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="includeNumbers" checked>
+                <label for="includeNumbers">Čísla (0-9)</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="includeSymbols" checked>
+                <label for="includeSymbols">Špeciálne znaky (!@#$%^&*)</label>
+            </div>
+
+            <!-- Zobrazenie vygenerovaného hesla a tlačidlo na kopírovanie -->
+            <div class="password-container">
+                <input type="text" id="passwordOutput" readonly placeholder="Tu sa zobrazí vaše heslo...">
+                <button id="copyBtn" title="Kopírovať do schránky">
+                    <span class="icon">📋</span>
+                </button>
+            </div>
+            
+            <!-- Indikátor sily hesla -->
+            <div class="strength-meter">
+                <div class="strength-bar" id="strengthBar"></div>
+            </div>
+            <p id="strengthText">Sila hesla: Nevyhodnotené</p>
+            
+            <!-- Tlačidlo na generovanie hesla -->
+            <button id="generateBtn">Generovať heslo</button>
+        </div>
+
+        <!-- Sekcia pre úpravu a hodnotenie existujúceho hesla -->
+        <div class="card">
+            <h2>Upraviť existujúce heslo</h2>
+
+            <!-- Vstup pre existujúce heslo -->
+            <div class="input-group">
+                <label for="existingPassword">Zadajte svoje heslo:</label>
+                <input type="text" id="existingPassword" placeholder="Sem vložte svoje heslo">
+            </div>
+
+            <!-- Tlačidlá na vyhodnotenie a vylepšenie hesla -->
+            <button id="evaluateBtn">Vyhodnotiť silu</button>
+            <button id="strengthenBtn">Vylepšiť heslo</button>
+            
+            <!-- Indikátor sily pre existujúce heslo -->
+            <div class="strength-meter">
+                <div class="strength-bar" id="existingStrengthBar"></div>
+            </div>
+            <p id="existingStrengthText">Sila hesla: Nevyhodnotené</p>
+
+            <!-- Kontajner pre návrhy na vylepšenie hesla -->
+            <div id="passwordSuggestions" class="suggestions-container"></div>
+        </div>
+    </div>
+
+    <!-- Prepojenie s JavaScript súborom -->
+    <script src="app.js"></script>
+</body>
+</html>

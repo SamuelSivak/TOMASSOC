@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Tento skript najprv vyčistí projekt od starých build súborov
+# a potom ho znova skompiluje a spustí server.
+
+echo "Spúšťa sa čistenie projektu..."
+make clean
+
+echo "Projekt sa kompiluje..."
+make
+
+# Kontrola, či kompilácia prebehla úspešne
+if [ $? -eq 0 ]; then
+    echo "Kompilácia úspešná. Spúšťa sa server na http://localhost:8080"
+    ./password_server
+else
+    echo "Chyba pri kompilácii. Server sa nespustí."
+    exit 1
+fi
