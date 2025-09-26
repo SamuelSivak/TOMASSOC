@@ -263,10 +263,30 @@ void start_server() {
  */
 void handle_connection(int client_socket, SSL *ssl) {
     char buffer[BUFFER_SIZE] = {0};
-    SSL_read(ssl, buffer, BUFFER_SIZE - 1);
+    int bytes_read_total = 0;
+    int bytes_read_last = 0;
+
+    // Čítanie požiadavky v cykle, aby sme sa uistili, že máme celú požiadavku.
+    // Toto je zjednodušená implementácia, ktorá predpokladá, že požiadavka sa načíta rýchlo.
+    do {
+        // Ak by sme prekročili veľkosť buffera, prestaneme čítať.
+        if (bytes_read_total >= BUFFER_SIZE - 1) {
+            break;
+        }
+        
+        bytes_read_last = SSL_read(ssl, buffer + bytes_read_total, BUFFER_SIZE - 1 - bytes_read_total);
+        
+        if (bytes_read_last > 0) {
+            bytes_read_total += bytes_read_last;
+        }
+        // Jednoduchá heuristika: Ak sme načítali menej, ako sme mohli,
+        // predpokladáme, že je to koniec dát. Pre robustnejšie riešenie
+        // by bolo potrebné parsovať Content-Length hlavičku.
+    } while (bytes_read_last > 0 && SSL_pending(ssl) > 0);
+
 
     // Diagnostický výpis prijatej požiadavky na konzolu
-    printf("--- Prijatá požiadavka ---\n%s\n--------------------------\n", buffer);
+    printf("--- Prijatá požiadavka (%d bytes) ---\n%s\n--------------------------\n", bytes_read_total, buffer);
     
     // Všetku logiku spracovania presunieme do funkcie handle_request
     handle_request(client_socket, buffer, ssl);
