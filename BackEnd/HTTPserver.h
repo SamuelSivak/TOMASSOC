@@ -8,8 +8,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 
 // Definícia portu, na ktorom bude server počúvať
 #define PORT 8080
@@ -25,31 +23,14 @@
 void start_server();
 
 /**
- * @brief Inicializuje SSL kontext pre server.
- * 
- * Načíta certifikát a privátny kľúč a vytvorí SSL_CTX.
- * 
- * @return Ukazovateľ na SSL_CTX alebo NULL pri chybe.
- */
-SSL_CTX *create_ssl_context();
-
-/**
- * @brief Konfiguruje SSL kontext s certifikátom a kľúčom.
- * 
- * @param ctx SSL kontext.
- */
-void configure_ssl_context(SSL_CTX *ctx);
-
-/**
- * @brief Spracuje prichádzajúce HTTPS spojenie.
+ * @brief Spracuje prichádzajúce HTTP spojenie.
  * 
  * Prečíta požiadavku od klienta, zavolá funkciu na spracovanie požiadavky
- * a odošle odpoveď späť klientovi cez SSL.
+ * a odošle odpoveď späť klientovi.
  * 
  * @param client_socket Socket klienta.
- * @param ssl Ukazovateľ na SSL štruktúru.
  */
-void handle_connection(int client_socket, SSL *ssl);
+void handle_connection(int client_socket);
 
 /**
  * @brief Spracuje HTTP požiadavku a vygeneruje odpoveď.
@@ -59,19 +40,18 @@ void handle_connection(int client_socket, SSL *ssl);
  * 
  * @param client_socket Socket klienta.
  * @param request Buffer obsahujúci HTTP požiadavku.
- * @param ssl Ukazovateľ na SSL štruktúru.
  */
-void handle_request(int client_socket, const char *request, SSL *ssl);
+void handle_request(int client_socket, const char *request);
 
 /**
- * @brief Servíruje statický súbor klientovi cez SSL.
+ * @brief Servíruje statický súbor klientovi.
  * 
- * Táto funkcia načíta obsah súboru a odošle ho ako HTTPS odpoveď.
+ * Táto funkcia načíta obsah súboru a odošle ho ako HTTP odpoveď.
  * 
- * @param ssl Ukazovateľ na SSL štruktúru.
+ * @param client_socket Socket klienta.
  * @param path Cesta k súboru.
  */
-void serve_static_file(SSL *ssl, const char* path);
+void serve_static_file(int client_socket, const char* path);
 
 /**
  * @brief Získa MIME typ súboru na základe jeho cesty.

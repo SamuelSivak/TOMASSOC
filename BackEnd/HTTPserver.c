@@ -1,8 +1,6 @@
 #include "HTTPserver.h"
 #include "../Logic/Password.h"
 #include <ctype.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
 #include <sys/select.h> // Pre select() a fd_set
 #include <fcntl.h>      // Pre fcntl()
 
@@ -66,51 +64,6 @@ int get_json_int_value(const char* json, const char* key) {
 }
 
 /**
- * @brief Inicializuje SSL knižnice a vytvára SSL kontext.
- * 
- * @return Ukazovateľ na novovytvorený SSL_CTX alebo NULL pri chybe.
- */
-SSL_CTX *create_ssl_context() {
-    const SSL_METHOD *method;
-    SSL_CTX *ctx;
-
-    // Inicializácia SSL knižníc
-    SSL_library_init();
-    OpenSSL_add_all_algorithms();
-    SSL_load_error_strings();
-
-    // Vytvorenie novej SSL metódy a kontextu
-    method = TLS_server_method();
-    ctx = SSL_CTX_new(method);
-    if (!ctx) {
-        perror("Unable to create SSL context");
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    return ctx;
-}
-
-/**
- * @brief Konfiguruje SSL kontext načítaním certifikátu a privátneho kľúča.
- * 
- * @param ctx SSL kontext, ktorý sa má konfigurovať.
- */
-void configure_ssl_context(SSL_CTX *ctx) {
-    // Načítanie certifikátu
-    if (SSL_CTX_use_certificate_file(ctx, "certs/cert.pem", SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-
-    // Načítanie privátneho kľúča
-    if (SSL_CTX_use_PrivateKey_file(ctx, "certs/key.pem", SSL_FILETYPE_PEM) <= 0 ) {
-        ERR_print_errors_fp(stderr);
-        exit(EXIT_FAILURE);
-    }
-}
-
-/**
  * @brief Určuje MIME typ súboru na základe jeho prípony.
  * 
  * @param path Cesta k súboru.
@@ -125,15 +78,15 @@ const char* get_mime_type(const char* path) {
 }
 
 /**
- * @brief Načíta a odošle statický súbor klientovi cez SSL.
+ * @brief Načíta a odošle statický súbor klientovi.
  * 
  * Funkcia vytvorí cestu k súboru v rámci adresára 'Frontend',
- * načíta ho a odošle ako HTTPS odpoveď s príslušnými hlavičkami.
+ * načíta ho a odošle ako HTTP odpoveď s príslušnými hlavičkami.
  * 
- * @param ssl SSL spojenie klienta.
+ * @param client_socket Socket klienta.
  * @param file_path Relatívna cesta k súboru (napr. "/index.html").
  */
-void serve_static_file(SSL* ssl, const char* file_path) {
+void serve_static_file(int client_socket, const char* file_path) {
     char full_path[256];
     // Vytvoríme cestu k súboru v zložke Frontend
     snprintf(full_path, sizeof(full_path), "Frontend%s", file_path);
@@ -142,7 +95,7 @@ void serve_static_file(SSL* ssl, const char* file_path) {
     if (!file) {
         // Súbor sa nenašiel, pošleme odpoveď 404 Not Found.
         char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
-        SSL_write(ssl, response, strlen(response));
+        write(client_socket, response, strlen(response));
         return;
     }
 
@@ -157,7 +110,7 @@ void serve_static_file(SSL* ssl, const char* file_path) {
         fclose(file);
         // Chyba alokácie pamäte, pošleme odpoveď 500 Internal Server Error.
         char response[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
-        SSL_write(ssl, response, strlen(response));
+        write(client_socket, response, strlen(response));
         return;
     }
 
@@ -173,29 +126,23 @@ void serve_static_file(SSL* ssl, const char* file_path) {
              "\r\n",
              get_mime_type(full_path), file_size);
 
-    SSL_write(ssl, header, strlen(header));
+    write(client_socket, header, strlen(header));
     // Odošleme samotný obsah súboru
-    SSL_write(ssl, buffer, file_size);
+    write(client_socket, buffer, file_size);
 
     free(buffer);
 }
 
 /**
- * @brief Inicializuje a spustí HTTPS server.
+ * @brief Inicializuje a spustí HTTP server.
  * 
- * Vytvorí socket, nastaví jeho parametre, naviaže ho na port,
- * inicializuje SSL kontext a vstúpi do nekonečnej slučky, 
- * kde prijíma nové spojenia a obsluhuje ich cez SSL/TLS.
+ * Vytvorí socket, nastaví jeho parametre, naviaže ho na port
+ * a vstúpi do nekonečnej slučky, kde prijíma nové spojenia a obsluhuje ich.
  */
 void start_server() {
     int server_fd, client_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
-    SSL_CTX *ssl_ctx;
-
-    // Inicializácia a konfigurácia SSL
-    ssl_ctx = create_ssl_context();
-    configure_ssl_context(ssl_ctx);
 
     // Vytvorenie socketu
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -227,7 +174,7 @@ void start_server() {
         exit(EXIT_FAILURE);
     }
 
-    printf("Server počúva na https://localhost:%d\n", PORT);
+    printf("Server počúva na http://localhost:%d\n", PORT);
 
     // Nekonečná slučka na prijímanie spojení
     while (1) {
@@ -236,34 +183,23 @@ void start_server() {
             continue; // Pri chybe pokračujeme na ďalšie spojenie
         }
 
-        // Vytvorenie SSL štruktúry pre nové spojenie
-        SSL *ssl = SSL_new(ssl_ctx);
-        SSL_set_fd(ssl, client_socket);
-
-        // Uskutočnenie SSL handshake
-        if (SSL_accept(ssl) <= 0) {
-            ERR_print_errors_fp(stderr);
-        } else {
-            // Spracovanie zabezpečeného spojenia
-            handle_connection(client_socket, ssl);
-        }
+        // Spracovanie spojenia
+        handle_connection(client_socket);
     }
 
     // Uvoľnenie zdrojov
     close(server_fd);
-    SSL_CTX_free(ssl_ctx);
 }
 
 /**
- * @brief Spracuje jedno prichádzajúce klientske HTTPS spojenie.
+ * @brief Spracuje jedno prichádzajúce klientske HTTP spojenie.
  * 
- * Prečíta HTTPS požiadavku z SSL spojenia, odovzdá ju na spracovanie
- * a nakoniec bezpečne uzavrie SSL spojenie a socket.
+ * Prečíta HTTP požiadavku, odovzdá ju na spracovanie
+ * a nakoniec uzavrie socket.
  * 
  * @param client_socket Socket pripojeného klienta.
- * @param ssl SSL štruktúra pre spojenie.
  */
-void handle_connection(int client_socket, SSL *ssl) {
+void handle_connection(int client_socket) {
     char buffer[BUFFER_SIZE] = {0};
     int bytes_read = 0;
     int total_bytes_read = 0;
@@ -291,11 +227,11 @@ void handle_connection(int client_socket, SSL *ssl) {
     } else if (retval) {
         // Dáta sú k dispozícii, čítame ich v cykle
         do {
-            bytes_read = SSL_read(ssl, buffer + total_bytes_read, BUFFER_SIZE - 1 - total_bytes_read);
+            bytes_read = read(client_socket, buffer + total_bytes_read, BUFFER_SIZE - 1 - total_bytes_read);
             if (bytes_read > 0) {
                 total_bytes_read += bytes_read;
             }
-        } while (bytes_read > 0 && SSL_pending(ssl) > 0 && total_bytes_read < BUFFER_SIZE - 1);
+        } while (bytes_read > 0 && total_bytes_read < BUFFER_SIZE - 1);
     }
     // Ak po časovom limite neprišli žiadne dáta, total_bytes_read bude 0
 
@@ -305,37 +241,32 @@ void handle_connection(int client_socket, SSL *ssl) {
     // Ak sme nič neprečítali, nemá zmysel pokračovať
     if (total_bytes_read > 0) {
         // Všetku logiku spracovania presunieme do funkcie handle_request
-        handle_request(client_socket, buffer, ssl);
+        handle_request(client_socket, buffer);
     }
 
-    // Bezpečné ukončenie SSL spojenia
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
+    // Uzavretie spojenia
     close(client_socket);
 }
 
 /**
- * @brief Parzuje a spracováva HTTPS požiadavku.
+ * @brief Parzuje a spracováva HTTP požiadavku.
  * 
  * Táto funkcia je hlavným smerovačom aplikácie. Rozlišuje medzi požiadavkami
- * na statické súbory (GET) a API volaniami (POST, OPTIONS) a posiela odpovede cez SSL.
+ * na statické súbory (GET) a API volaniami (POST, OPTIONS) a posiela odpovede.
  * 
- * @param client_socket Socket pripojeného klienta (pre informáciu, nepoužíva sa priamo na zápis).
+ * @param client_socket Socket pripojeného klienta pre odosielanie odpovedí.
  * @param request Reťazec obsahujúci celú HTTP požiadavku.
- * @param ssl SSL štruktúra pre odosielanie odpovedí.
  */
-void handle_request(int client_socket, const char *request, SSL *ssl) {
-    (void)client_socket; // Zabráni varovaniu o nepoužitom parametri
-
+void handle_request(int client_socket, const char *request) {
     // --- Spracovanie GET požiadaviek na statické súbory ---
     if (strncmp(request, "GET ", 4) == 0) {
         char path[256];
         sscanf(request, "GET %255s", path);
         // Ak je cesta "/", servírujeme index.html
         if (strcmp(path, "/") == 0) {
-            serve_static_file(ssl, "/index.html");
+            serve_static_file(client_socket, "/index.html");
         } else {
-            serve_static_file(ssl, path);
+            serve_static_file(client_socket, path);
         }
         return;
     }
@@ -354,7 +285,7 @@ void handle_request(int client_socket, const char *request, SSL *ssl) {
             "Access-Control-Allow-Headers: Content-Type\r\n"
             "Connection: keep-alive\r\n"
             "\r\n");
-        SSL_write(ssl, response, strlen(response));
+        write(client_socket, response, strlen(response));
         return;
     }
 
@@ -427,6 +358,6 @@ void handle_request(int client_socket, const char *request, SSL *ssl) {
         "%s",
         strlen(json_response), json_response);
     
-    // Odoslanie odpovede klientovi cez SSL
-    SSL_write(ssl, response, strlen(response));
+    // Odoslanie odpovede klientovi
+    write(client_socket, response, strlen(response));
 }
