@@ -8,12 +8,15 @@ CC = gcc
 # -g: Vygeneruje debug informácie pre jednoduchšie ladenie.
 CFLAGS = -Wall -Wextra -std=c99 -g
 
+# Knižnice potrebné pre projekt (napr. pre SSL)
+LIBS = -lssl -lcrypto
+
 # Názov výsledného spustiteľného súboru
 TARGET = password_server
 
 # Zoznam všetkých zdrojových súborov (.c), ktoré tvoria projekt
 SOURCES = Logic/main.c Logic/Password.c BackEnd/HTTPserver.c
-# Automatické odvodenie názvov objektových súborov (.o) zo zdrojových (.c)
+# Automatické odvodenie názvov objektových súborov (.c) zo zdrojových (.c)
 OBJECTS = $(SOURCES:.c=.o)
 # Zoznam všetkých hlavičkových súborov (.h). Zmena v nich spôsobí rekompiláciu.
 HEADERS = Logic/Password.h BackEnd/HTTPserver.h
@@ -28,7 +31,7 @@ all: $(TARGET)
 # Spustí sa až po ich úspešnom vytvorení.
 $(TARGET): $(OBJECTS)
 	@echo "Linkujem objektové súbory -> $@"
-	$(CC) $(OBJECTS) -o $(TARGET)
+	$(CC) $(OBJECTS) -o $(TARGET) $(LIBS)
 	@echo "Server bol úspešne skompilovaný: $(TARGET)"
 
 # Pravidlo pre kompiláciu zdrojových súborov (.c) na objektové súbory (.o).
@@ -44,6 +47,8 @@ $(TARGET): $(OBJECTS)
 clean:
 	@echo "Čistím projekt..."
 	rm -f $(OBJECTS) $(TARGET)
+	@echo "Odstraňujem certifikáty..."
+	rm -rf certs
 
 # Spustenie servera.
 # Najprv sa uistí, že je server aktuálne skompilovaný (závislosť na $(TARGET)).
@@ -51,6 +56,13 @@ run: $(TARGET)
 	@echo "Spúšťam server na porte 8080..."
 	./$(TARGET)
 
+# Generovanie SSL certifikátov pre HTTPS server.
+certs:
+	@echo "Vytváram adresár pre certifikáty..."
+	mkdir -p certs
+	@echo "Generujem self-signed SSL certifikát a kľúč pre doménu tomasmajerik.site..."
+	openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -sha256 -days 365 -nodes -subj "/C=SK/ST=Slovakia/L=Bratislava/O=tomasmajerik.site/OU=IT/CN=tomasmajerik.site"
+
 # Označenie cieľov, ktoré nie sú názvami súborov.
 # Zabezpečí, že 'make' sa nepokúsi hľadať súbory s názvami 'all', 'clean', 'run'.
-.PHONY: all clean run
+.PHONY: all clean run certs
